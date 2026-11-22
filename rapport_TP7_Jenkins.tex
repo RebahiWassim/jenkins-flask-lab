@@ -4,6 +4,7 @@
 \usepackage[T1]{fontenc}
 \usepackage[margin=1in]{geometry}
 \usepackage{graphicx}
+\usepackage{amsmath}
 \usepackage{booktabs}
 \usepackage{listings}
 \usepackage{xcolor}
@@ -102,7 +103,7 @@ jenkins-flask-lab/
  |- tests/test_app.py    pytest tests for both endpoints
 \end{lstlisting}
 
-\texttt{app.py} reads the \texttt{APP_VERSION} environment variable and displays it on
+\texttt{app.py} reads the \texttt{APP\_VERSION} environment variable and displays it on
 the home page; the \texttt{/health} endpoint returns \texttt{\{"status": "ok"\}} with
 HTTP 200. The tests use Flask's test client to check both endpoints. The Dockerfile
 copies the application {\em and} its tests into the image, so the very same image can be
@@ -111,11 +112,11 @@ used to run the tests and to serve the application with gunicorn.
 \section{The Jenkins pipeline}
 
 The \texttt{Jenkinsfile} is stored at the root of the repository and defines a
-declarative pipeline with three environment variables: \texttt{IMAGE_NAME}
-(\texttt{jenkins-flask-lab}), \texttt{CONTAINER_NAME} (\texttt{jenkins-flask-app})
-and \texttt{APP_PORT} (\texttt{8081}). Every image is tagged with
+declarative pipeline with three environment variables: \texttt{IMAGE\_NAME}
+(\texttt{jenkins-flask-lab}), \texttt{CONTAINER\_NAME} (\texttt{jenkins-flask-app})
+and \texttt{APP\_PORT} (\texttt{8081}). Every image is tagged with
 \texttt{\$\{IMAGE\_NAME\}:\$\{BUILD\_NUMBER\}}, which keeps each build traceable;
-the build number is also injected as \texttt{APP_VERSION} into the running container.
+the build number is also injected as \texttt{APP\_VERSION} into the running container.
 
 \begin{table}[htbp]
 \centering
