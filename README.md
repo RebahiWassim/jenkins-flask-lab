@@ -48,18 +48,32 @@ Change the assertion in `tests/test_app.py` to
 The **Test** stage fails, so **Deploy** and **Verify** are skipped and the previous
 container keeps running. Restore `{"status": "ok"}`, push and rebuild to recover.
 
-## Report (deliverable)
+## Execution results (this run)
+
+| Build | Result | Note |
+|---|---|---|
+| #1 | SUCCESS | All five stages; app version 1 |
+| #2 | FAILURE (intentional) | Test stage failed; Deploy and Verify skipped |
+| #3, #4 | FAILURE (infrastructure) | Transient GitHub connection error during SCM checkout |
+| #5 | SUCCESS | After restarting Jenkins with a short DNS cache TTL; app version 5 |
+
+The application is reachable at `http://localhost:8081` (`/health` returns
+`{"status":"ok"}`), and Jenkins at `http://localhost:8080`.
+
+## Report and screenshots (deliverables)
 
 `rapport_TP7_Jenkins.tex` contains the report, the answers to the questions in
-Sections 19 and 20, and the screenshot evidence slots. Before compiling:
+Sections 19 and 20, and all screenshot evidence. The repository URL is already set to
+`https://github.com/RebahiWassim/jenkins-flask-lab.git`.
 
-- Replace `USERNAME` in `\repoURL` (top of the `.tex` file) with your GitHub username.
-- Save the three screenshots in this folder with these exact names:
-  - `jenkins-success.png` — successful Jenkins pipeline (five green stages)
-  - `app-running.png` — application in the browser at `http://localhost:8081`
-  - `test-failed.png` — failed Test stage in the Jenkins console
+Screenshots saved in this folder:
+
+- `jenkins-success.png` — Jenkins Pipeline Steps view of the successful build #5
+- `app-running.png` — application in the browser at `http://localhost:8081` (Version: 5)
+- `test-failed.png` — failed Test stage console output of build #2
+- `jenkins-failed-stages.png` — Pipeline Steps view of build #2 (Test failed, Deploy/Verify skipped)
 
 The `.tex` file automatically inserts an image when the file exists and shows a
-labelled placeholder box otherwise, so it can be compiled at any time.
+labelled placeholder box otherwise.
 
 Compile with: `pdflatex rapport_TP7_Jenkins.tex` (run twice for the table of contents).

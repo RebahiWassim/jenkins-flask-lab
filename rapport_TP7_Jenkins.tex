@@ -1,0 +1,269 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=blue!70!black, urlcolor=blue!70!black,
+            citecolor=blue!70!black, pdftitle={Lab No. 07 -- Jenkins CI/CD Pipeline}}
+
+% ---------------------------------------------------------------------------
+% TO EDIT: put your own username in the repository URL below.
+% (Your previous lab report used the GitHub username "RebahiWassim".)
+% ---------------------------------------------------------------------------
+\newcommand{\studentName}{Rebahi M'hamed Wassim}
+\newcommand{\studentGroup}{2}
+\newcommand{\repoURL}{https://github.com/RebahiWassim/jenkins-flask-lab.git}
+% ---------------------------------------------------------------------------
+
+\lstdefinestyle{code}{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  framesep=5pt,
+  xleftmargin=4pt,
+  backgroundcolor=\color{gray!8},
+  commentstyle=\color{gray},
+  keywordstyle=\color{blue!70!black},
+  stringstyle=\color{red!70!black}
+}
+\lstset{style=code}
+
+% Inserts the screenshot if the file exists; otherwise shows a labelled box.
+\newcommand{\evidence}[2]{%
+  \begin{figure}[htbp]
+    \centering
+    \IfFileExists{#2}{%
+      \includegraphics[width=0.88\textwidth]{#2}%
+    }{%
+      \fbox{\parbox[t]{0.84\textwidth}{\centering\vspace*{0.7cm}
+        \textbf{Screenshot to insert: #1}\\[1mm]
+        {\small Save the screenshot as \texttt{#2} in this folder and recompile;
+        it will be inserted automatically.}%
+        \vspace*{0.7cm}}%
+      }%
+    }
+    \caption{#1}
+  \end{figure}
+}
+
+\begin{document}
+
+\begin{center}
+{\Large\bfseries Lab No. 07 --- Building a CI/CD Pipeline with Jenkins and Docker}\\[3mm]
+Student: \studentName \hfill Group: \studentGroup\\
+Level: 5th-year Software Engineering \quad | \quad Course: DevOps \& Cloud Computing\\
+Lab date: 22/11/2026 \quad | \quad Report: \today\\[2mm]
+GitHub repository: \href{\repoURL}{\texttt{\repoURL}}
+\end{center}
+
+\hrule\vspace{3mm}
+
+\tableofcontents\vspace{2mm}
+
+\hrule\vspace{4mm}
+
+\section{Introduction and objectives}
+
+This lab puts into practice a complete Continuous Integration / Continuous Delivery
+workflow. A small Flask application is stored on GitHub, built and tested by Jenkins
+inside Docker images, then deployed as a container and checked over HTTP. The goal is
+to understand how an automated pipeline turns a commit into a verified running service,
+and why a failing test must block deployment.
+
+The workflow is:
+
+\[
+  \text{GitHub} \;\longrightarrow\; \text{Jenkins Pipeline} \;\longrightarrow\;
+  \text{Docker Image} \;\longrightarrow\; \text{Docker Container} \;\longrightarrow\;
+  \text{Flask Application}
+\]
+
+Jenkins is reached at \texttt{http://localhost:8080} and the deployed application at
+\texttt{http://localhost:8081}. Jenkins runs on an agent that has access to the Docker
+daemon; this is acceptable only on the isolated educational machine used for the lab,
+never on a shared or production host.
+
+\section{Project structure and application}
+
+The repository contains the following files:
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize]
+jenkins-flask-lab/
+ |- app.py               Flask app: "/" (home) and "/health" endpoints
+ |- requirements.txt     Flask, pytest, gunicorn
+ |- Dockerfile           python:3.12-slim image, gunicorn on port 8000
+ |- Jenkinsfile          declarative 5-stage pipeline
+ |- tests/test_app.py    pytest tests for both endpoints
+\end{lstlisting}
+
+\texttt{app.py} reads the \texttt{APP_VERSION} environment variable and displays it on
+the home page; the \texttt{/health} endpoint returns \texttt{\{"status": "ok"\}} with
+HTTP 200. The tests use Flask's test client to check both endpoints. The Dockerfile
+copies the application {\em and} its tests into the image, so the very same image can be
+used to run the tests and to serve the application with gunicorn.
+
+\section{The Jenkins pipeline}
+
+The \texttt{Jenkinsfile} is stored at the root of the repository and defines a
+declarative pipeline with three environment variables: \texttt{IMAGE_NAME}
+(\texttt{jenkins-flask-lab}), \texttt{CONTAINER_NAME} (\texttt{jenkins-flask-app})
+and \texttt{APP_PORT} (\texttt{8081}). Every image is tagged with
+\texttt{\$\{IMAGE\_NAME\}:\$\{BUILD\_NUMBER\}}, which keeps each build traceable;
+the build number is also injected as \texttt{APP_VERSION} into the running container.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{@{}p{0.16\textwidth}p{0.42\textwidth}p{0.34\textwidth}@{}}
+\toprule
+\textbf{Stage} & \textbf{Command / action} & \textbf{Expected result}\\
+\midrule
+Checkout & Jenkins clones the SCM repository into the workspace (``Pipeline script from SCM''); the stage only echoes a message to make the step visible. & Source code and Jenkinsfile are available.\\
+Build & \texttt{docker build -t \$\{IMAGE\_NAME\}:\$\{BUILD\_NUMBER\} .} & A tagged Docker image is created.\\
+Test & \texttt{docker run --rm \$\{IMAGE\_NAME\}:\$\{BUILD\_NUMBER\} pytest -v} & Tests pass; the temporary container is removed. A failure stops the pipeline.\\
+Deploy & \texttt{docker rm -f \$\{CONTAINER\_NAME\} || true}, then \texttt{docker run -d --name \$\{CONTAINER\_NAME\} -p \$\{APP\_PORT\}:8000 -e APP\_VERSION=\$\{BUILD\_NUMBER\} \$\{IMAGE\_NAME\}:\$\{BUILD\_NUMBER\}} & The previous container is replaced by the new version on port 8081.\\
+Verify & \texttt{curl --fail --retry 10 --retry-delay 2 http://localhost:\$\{APP\_PORT\}/health} and \texttt{curl --fail http://localhost:\$\{APP\_PORT\}/} & Health endpoint and home page respond successfully.\\
+\bottomrule
+\end{tabular}
+\caption{The five stages of the pipeline and their expected results.}
+\end{table}
+
+The \texttt{post} block prints a message on success or failure. The \texttt{--rm} flag
+prevents test containers from accumulating, \texttt{|| true} makes the Deploy stage
+idempotent when no previous container exists, and the retry options give gunicorn time
+to start before the health check is considered failed.
+
+\section{Running and verifying the pipeline}
+
+A Jenkins Pipeline job named \texttt{jenkins-flask-lab} was created with
+\textit{Pipeline script from SCM}, Git as SCM, the public repository URL, branch
+\texttt{*/main} and script path \texttt{Jenkinsfile}. After \textit{Build Now}, the
+console output shows the five stages executing in order and build \#1 ends with
+\texttt{SUCCESS}. No credentials were needed because the repository is public. Two
+intermediate builds were interrupted by transient GitHub connectivity during SCM
+checkout; after restarting Jenkins with a short DNS cache TTL, the final build \#5
+also completed successfully and deployed version 5 of the application.
+
+\evidence{Jenkins Pipeline Steps view for build \#5: all five stages succeeded.}{jenkins-success.png}
+
+The application was then checked on the Jenkins host:
+
+\begin{lstlisting}
+curl http://localhost:8081/health   # {"status":"ok"}
+curl http://localhost:8081/         # <h1>Jenkins CI/CD Lab</h1><p>Version: <BUILD_NUMBER></p>
+\end{lstlisting}
+
+\evidence{Flask application running in the browser at \texttt{http://localhost:8081} with ``Version: 5''.}{app-running.png}
+
+\section{Failure experiment}
+
+To show that testing gates delivery, the health assertion in \texttt{tests/test\_app.py}
+was temporarily changed to \texttt{assert response.get\_json() == \{"status":
+"incorrect"\}} and pushed. Build \#2 failed in the \textbf{Test} stage: pytest
+reported \texttt{AssertionError: assert \{'status': 'ok'\} == \{'status':
+'incorrect'\}}, so Jenkins stopped the pipeline. The \textbf{Deploy} and
+\textbf{Verify} stages were skipped, the \texttt{post failure} message was printed
+and the build was marked \texttt{FAILURE}.
+Consequently, the previously running container was not replaced by the broken version ---
+the failed code never reached the users. Restoring \texttt{\{"status": "ok"\}}, pushing
+the fix and rebuilding produced a successful pipeline again.
+
+\evidence{Failed Test stage in the Jenkins console output (build \#2).}{test-failed.png}
+
+\evidence{Jenkins Pipeline Steps view of build \#2: Test failed and Deploy/Verify were skipped.}{jenkins-failed-stages.png}
+
+\section{Blue--Green deployment and rollback (Section 19)}
+
+\begin{enumerate}[label=\arabic*.]
+\item \textbf{Deployment vs.\ release.} Deployment is placing a new version in an
+  environment (building the image, starting the containers, making it reachable there).
+  Release is routing real user traffic to that version. With Blue--Green, Green can be
+  deployed and validated while Blue still serves all production traffic; the release
+  happens only when traffic is switched.
+\item \textbf{Why deploy to Green first?} It provides a production-like environment for
+  final tests without disturbing current users. Errors, performance regressions or a
+  bad configuration are detected on Green while Blue continues to serve traffic, so
+  the impact of a faulty release is close to zero.
+\item \textbf{Which component routes traffic?} A reverse proxy or load balancer such as
+  NGINX, HAProxy or a cloud load balancer (a DNS switch or service mesh can also be
+  used). It can point user requests to the Blue or the Green environment by changing
+  its upstream configuration.
+\item \textbf{Why keep Blue available?} It is the known-good rollback target. If Green
+  fails after the switch, traffic can be sent back to Blue immediately, without
+  rebuilding or redeploying the old version.
+\item \textbf{How can Jenkins automate it?} Jenkins can build and tag images, run unit
+  tests, security scans and integration/smoke tests against Green, deploy Green, run
+  health checks, wait for a manual approval with an \texttt{input} step, then trigger the
+  proxy reconfiguration (script, API or infrastructure-as-code), and finally monitor the
+  result and roll back automatically if checks fail. Credentials are supplied through
+  Jenkins credentials bindings, never the Jenkinsfile.
+\item \textbf{Main benefit of rollback.} Fast recovery with minimal downtime: returning
+  to the previous working version is just a traffic switch, not a new build and
+  deployment, which greatly reduces risk and user-visible incidents.
+\end{enumerate}
+
+\section{Questions (Section 20)}
+
+\begin{enumerate}[label=\arabic*.]
+\item \textbf{What is Jenkins and what problem does it solve?} Jenkins is an open-source
+  automation server that orchestrates repeatable jobs through pipelines. It solves the
+  manual, error-prone and inconsistent build/test/deploy process by automatically
+  fetching code, building it, running tests and deploying it, with a visible and
+  auditable history for every build.
+\item \textbf{Purpose of a Jenkinsfile.} It is ``pipeline as code'': a text file (Groovy
+  DSL) kept in the repository next to the source. It declares the agent, environment,
+  stages and post-build actions, so the pipeline is versioned, reviewable and
+  reproducible instead of being configured by hand in the Jenkins UI.
+\item \textbf{CI vs.\ CD.} Continuous Integration means developers merge changes
+  frequently into a shared branch and every merge triggers an automated build and
+  tests, catching integration problems early. Continuous Delivery extends this by
+  automatically packaging and deploying the validated code to staging/production-like
+  environments so that every good build is ready to be released, often with a manual
+  approval before the final release. Continuous Deployment goes one step further and
+  releases to production automatically.
+\item \textbf{Role of GitHub here.} GitHub hosts the application source and the
+  Jenkinsfile as the single source of truth. Jenkins is configured as ``Pipeline script
+  from SCM'' and clones the \texttt{main} branch from the repository URL; a webhook
+  could also notify Jenkins on each push (used only if Jenkins is reachable from
+  GitHub).
+\item \textbf{Why Docker?} It provides an isolated, reproducible environment that
+  behaves the same on the developer machine and on the Jenkins agent. The same image is
+  used for tests and for production, so ``it works on my machine'' issues disappear.
+  Containers are fast to create and destroy, and the build-number tag makes each
+  version traceable.
+\item \textbf{Why test before deployment?} Tests are a quality gate: they detect
+  regressions while the change is still cheap to discard. Because the pipeline stops
+  at the failed stage, a broken version is never deployed and users keep seeing the
+  last working release.
+\item \textbf{What happens when a stage fails?} The pipeline halts at that stage; all
+  later stages (Deploy and Verify in this lab) are skipped, the \texttt{post failure}
+  block runs, and Jenkins marks the build as \texttt{FAILURE}. No new container is
+  started, so the previous deployment remains in place.
+\item \textbf{Purpose of the Verify stage.} Starting a container only proves that Docker
+  accepted the command. Verify sends real HTTP requests: the health endpoint is retried
+  for up to 20 seconds to absorb startup time, and the home page is fetched with
+  \texttt{curl --fail}. The build succeeds only when the deployed service actually
+  answers.
+\item \textbf{Why not store credentials in a Jenkinsfile?} The Jenkinsfile lives in the
+  repository and is readable by everyone with repository access and by anyone viewing
+  build logs; secrets would leak through history and logs. Use Jenkins credentials
+  (secret text, username/password, SSH keys) injected at runtime with
+  \texttt{withCredentials}/credentials bindings, and restrict who can read them.
+\end{enumerate}
+
+\section{Conclusion}
+
+The pipeline successfully automated checkout, image build, pytest execution,
+deployment on port 8081 and HTTP verification. The failure experiment confirmed that a
+failing test blocks deployment and preserves the last working version. The conceptual
+Blue--Green discussion shows how the same Jenkins mechanisms can be extended with a
+reverse proxy, validation, approval and instant rollback for production releases. As an
+optional extension, a GitHub webhook can trigger builds automatically on every push
+when the Jenkins server is reachable from GitHub; in this lab, manual builds were used.
+
+\end{document}
