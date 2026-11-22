@@ -3,3 +3,6 @@ __pycache__/
 .pytest_cache/
 .venv/
 *.log
+
+rapport_TP7_Jenkins.tex
+apport_TP7_Jenkins.pdf
